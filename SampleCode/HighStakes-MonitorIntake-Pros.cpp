@@ -97,22 +97,35 @@ void intake_monitor_task(void *param)
  */
 void opcontrol()
 {
-    // Start the intake monitoring task
-    pros::Task intake_monitor(intake_monitor_task, nullptr, "Intake Monitor Task");
+    pros::Task *intake_monitor_task = nullptr; // Pointer to the intake monitoring task
 
     // Main operator control loop
     while (true)
     {
         // Check if the R1 button on the controller is pressed
-        if (pros::controller_get_digital(E_CONTROLLER_DIGITAL_R1))
+        if (pros::controller_get_digital(pros::E_CONTROLLER_DIGITAL_R1))
         {
             // Run the intake motor at the desired velocity
-            intake_motor.move_velocity(desired_velocity);
+            intake.move_velocity(desired_velocity);
+
+            // Start the intake monitoring task if not already running
+            if (intake_monitor_task == nullptr)
+            {
+                intake_monitor_task = new pros::Task(intake_monitor_task_function, nullptr, "Intake Monitor Task");
+            }
         }
         else
         {
             // Stop the intake motor
-            intake_motor.move_velocity(0);
+            intake.move_velocity(0);
+
+            // Stop and destroy the intake monitoring task if running
+            if (intake_monitor_task != nullptr)
+            {
+                intake_monitor_task->remove(); // Stop the task
+                delete intake_monitor_task;    // Free the allocated memory
+                intake_monitor_task = nullptr;
+            }
         }
 
         // Delay to prevent excessive CPU usage
