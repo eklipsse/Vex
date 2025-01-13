@@ -8,6 +8,12 @@
  */
 
 /**
+ * Global pointer to the intake monitoring task.
+ * Initialized to nullptr, ensuring no task is running by default.
+ */
+pros::Task *intake_monitor_task = nullptr;
+
+/**
  * @brief Motor used for the intake mechanism.
  * @details Replace the port number (1) with the actual port your motor is connected to.
  */
@@ -44,14 +50,15 @@ const int reverse_speed = -100;
  *
  * @param param Pointer to additional data passed to the task (not used here, can be nullptr).
  */
-void intake_monitor_task(void *param)
+void intake_monitor_task_function(void *param)
 {
     bool reversing = false;    // Track if the motor is currently reversing
     bool spin_up_grace = true; // Grace period flag to allow for "spooling", when the motor starts spinning the first time
+
     while (true)
     {
         // Get the current velocity of the intake motor
-        double current_velocity = intake.get_actual_velocity();
+        double current_velocity = intake_motor.get_actual_velocity();
 
         // Allow a grace period for spin-up after the motor starts
         if (spin_up_grace)
@@ -62,7 +69,7 @@ void intake_monitor_task(void *param)
         }
 
         // Check if the intake motor is stuck
-        if (!reversing && abs(current_velocity) < velocity_threshold && intake.get_target_velocity() != 0)
+        if (!reversing && abs(current_velocity) < velocity_threshold && intake_motor.get_target_velocity() != 0)
         {
             // Log a message to the LCD for debugging purposes
             pros::lcd::print(0, "Intake stuck! Reversing...");
@@ -70,16 +77,16 @@ void intake_monitor_task(void *param)
 
             // Reverse the intake motor to resolve the stall
             reversing = true; // Set reversing flag to avoid repeated reversals
-            intake.move_relative(-reverse_degrees, reverse_speed);
+            intake_motor.move_relative(-reverse_degrees, reverse_speed);
 
             // Wait for the reverse motion to complete
-            while (abs(intake.get_actual_velocity()) > 1)
+            while (abs(intake_motor.get_actual_velocity()) > 1)
             {
                 pros::delay(10);
             }
 
             // Resume normal intake operation
-            intake.move_velocity(desired_velocity);
+            intake_motor.move_velocity(desired_velocity);
             reversing = false; // Reset the reversing flag
         }
 
@@ -97,7 +104,6 @@ void intake_monitor_task(void *param)
  */
 void opcontrol()
 {
-    pros::Task *intake_monitor_task = nullptr; // Pointer to the intake monitoring task
 
     // Main operator control loop
     while (true)
@@ -106,7 +112,7 @@ void opcontrol()
         if (pros::controller_get_digital(pros::E_CONTROLLER_DIGITAL_R1))
         {
             // Run the intake motor at the desired velocity
-            intake.move_velocity(desired_velocity);
+            intake_motor.move_velocity(desired_velocity);
 
             // Start the intake monitoring task if not already running
             if (intake_monitor_task == nullptr)
@@ -117,7 +123,7 @@ void opcontrol()
         else
         {
             // Stop the intake motor
-            intake.move_velocity(0);
+            intake_motor.move_velocity(0);
 
             // Stop and destroy the intake monitoring task if running
             if (intake_monitor_task != nullptr)
