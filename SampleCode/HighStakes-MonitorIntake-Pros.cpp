@@ -34,7 +34,7 @@ IntakeDirection intake_direction = STOPPED; // Initialize to STOPPED
  * @brief Spin-up grace period in milliseconds.
  * @details Allows the motor time to reach operating speed before checking for stalls.
  */
-const int SPIN_UP_GRACE_MS_MS = 1000;
+const int SPIN_UP_GRACE = 1000;
 
 /**
  * @brief Desired velocity for the intake motor in RPM.
@@ -93,8 +93,8 @@ void stopMonitoringTask()
  */
 void intake_monitor_task_function(void *param)
 {
-    bool reversing = false;    // Track if the motor is currently reversing
-    bool spin_up_grace = true; // Grace period flag to allow for "spooling", when the motor starts spinning the first time
+    bool reversing = false;        // Track if the motor is currently reversing
+    bool use_spin_up_grace = true; // Grace period flag to allow for "spooling", when the motor starts spinning the first time
 
     while (true)
     {
@@ -102,10 +102,10 @@ void intake_monitor_task_function(void *param)
         double current_velocity = intake_motor.get_actual_velocity();
 
         // Allow a grace period for spin-up after the motor starts
-        if (spin_up_grace)
+        if (use_spin_up_grace)
         {
             pros::delay(SPIN_UP_GRACE); // Use configurable grace period for spin-up
-            spin_up_grace = false;      // Disable grace period after initial delay
+            use_spin_up_grace = false;  // Disable grace period after initial delay
             continue;                   // Skip the stuck check during grace period
         }
 
