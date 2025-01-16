@@ -20,25 +20,66 @@ pros::Task *intake_monitor_task = nullptr;
 pros::Motor intake_motor(1);
 
 /**
+ * @brief Enum to track the intake motor direction.
+ */
+enum IntakeDirection
+{
+    FORWARD,
+    BACKWARD,
+    STOPPED
+};
+IntakeDirection intake_direction = STOPPED; // Initialize to STOPPED
+
+/**
+ * @brief Spin-up grace period in milliseconds.
+ * @details Allows the motor time to reach operating speed before checking for stalls.
+ */
+const int SPIN_UP_GRACE_MS_MS = 1000;
+
+/**
  * @brief Desired velocity for the intake motor in RPM.
  */
-const int desired_velocity = 200;
+const int DESIRED_VELOCITY = 600;
 
 /**
  * @brief Threshold velocity below which the motor is considered stuck.
  * @details If the motor's velocity falls below this value, corrective action will be taken.
  */
-const int velocity_threshold = 50;
+const int VELOCITY_THRESHOLD = 50;
 
 /**
  * @brief Degrees to reverse the intake motor when it is stuck.
  */
-const int reverse_degrees = 90;
+const int REVERSE_DEGREES = 90;
 
 /**
  * @brief Speed for reversing the intake motor.
  */
-const int reverse_speed = -100;
+const int REVERSE_SPEED = -100;
+
+/**
+ * @brief Starts the intake monitoring task.
+ */
+void startMonitoringTask()
+{
+    if (intake_monitor_task == nullptr)
+    {
+        intake_monitor_task = new pros::Task(intake_monitor_task_function, nullptr, "Intake Monitor Task");
+    }
+}
+
+/**
+ * @brief Stops the intake monitoring task.
+ */
+void stopMonitoringTask()
+{
+    if (intake_monitor_task != nullptr)
+    {
+        intake_monitor_task->remove(); // Stop the task
+        delete intake_monitor_task;    // Free the allocated memory
+        intake_monitor_task = nullptr;
+    }
+}
 
 /**
  * @brief Task function that monitors the intake motor for stalls and takes corrective action.
@@ -63,13 +104,13 @@ void intake_monitor_task_function(void *param)
         // Allow a grace period for spin-up after the motor starts
         if (spin_up_grace)
         {
-            pros::delay(200);      // 200ms delay for spin-up
-            spin_up_grace = false; // Disable grace period after initial delay
-            continue;              // Skip the stuck check during grace period
+            pros::delay(SPIN_UP_GRACE); // Use configurable grace period for spin-up
+            spin_up_grace = false;      // Disable grace period after initial delay
+            continue;                   // Skip the stuck check during grace period
         }
 
         // Check if the intake motor is stuck
-        if (!reversing && abs(current_velocity) < velocity_threshold && intake_motor.get_target_velocity() != 0)
+        if (!reversing && abs(current_velocity) < VELOCITY_THRESHOLD && intake_motor.get_target_velocity() != 0)
         {
             // Log a message to the LCD for debugging purposes
             pros::lcd::print(0, "Intake stuck! Reversing...");
@@ -77,7 +118,7 @@ void intake_monitor_task_function(void *param)
 
             // Reverse the intake motor to resolve the stall
             reversing = true; // Set reversing flag to avoid repeated reversals
-            intake_motor.move_relative(-reverse_degrees, reverse_speed);
+            intake_motor.move_relative(-REVERSE_DEGREES, REVERSE_SPEED);
 
             // Wait for the reverse motion to complete
             while (abs(intake_motor.get_actual_velocity()) > 1)
@@ -86,7 +127,7 @@ void intake_monitor_task_function(void *param)
             }
 
             // Resume normal intake operation
-            intake_motor.move_velocity(desired_velocity);
+            intake_motor.move_velocity(DESIRED_VELOCITY);
             reversing = false; // Reset the reversing flag
         }
 
@@ -104,33 +145,43 @@ void intake_monitor_task_function(void *param)
  */
 void opcontrol()
 {
-
-    // Main operator control loop
     while (true)
     {
-        // Check if the R1 button on the controller is pressed
-        if (pros::controller_get_digital(pros::E_CONTROLLER_DIGITAL_R1))
+        // Toggle forward intake with R1
+        if (pros::controller_get_digital_new_press(pros::E_CONTROLLER_DIGITAL_R1))
         {
-            // Run the intake motor at the desired velocity
-            intake_motor.move_velocity(desired_velocity);
-
-            // Start the intake monitoring task if not already running
-            if (intake_monitor_task == nullptr)
+            if (intake_direction == FORWARD)
             {
-                intake_monitor_task = new pros::Task(intake_monitor_task_function, nullptr, "Intake Monitor Task");
+                // If currently forward, stop the intake
+                intake_motor.move_velocity(0);
+                intake_direction = STOPPED;
+                stopMonitoringTask(); // Stop monitoring
+            }
+            else
+            {
+                // Start forward intake
+                intake_motor.move_velocity(DESIRED_VELOCITY); // Forward intake speed
+                intake_direction = FORWARD;
+                startMonitoringTask(); // Start monitoring
             }
         }
-        else
-        {
-            // Stop the intake motor
-            intake_motor.move_velocity(0);
 
-            // Stop and destroy the intake monitoring task if running
-            if (intake_monitor_task != nullptr)
+        // Toggle reverse intake with A
+        if (pros::controller_get_digital_new_press(pros::E_CONTROLLER_DIGITAL_A))
+        {
+            if (intake_direction == BACKWARD)
             {
-                intake_monitor_task->remove(); // Stop the task
-                delete intake_monitor_task;    // Free the allocated memory
-                intake_monitor_task = nullptr;
+                // If currently backward, stop the intake
+                intake_motor.move_velocity(0);
+                intake_direction = STOPPED;
+                stopMonitoringTask(); // Stop monitoring
+            }
+            else
+            {
+                // Start reverse intake
+                intake_motor.move_velocity(-DESIRED_VELOCITY); // Reverse intake speed
+                intake_direction = BACKWARD;
+                stopMonitoringTask(); // Stop monitoring (monitoring only for forward intake)
             }
         }
 
